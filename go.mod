@@ -4,7 +4,7 @@ go 1.25.0
 
 require (
 	github.com/gin-gonic/gin v1.12.0
-	github.com/google/generative-ai-go v0.20.1
+	github.com/google/generative-ai-go v0.12.0
 	github.com/ledongthuc/pdf v0.0.0-20250511090121-5959a4027728
 	github.com/philippgille/chromem-go v0.7.0
 	google.golang.org/api v0.273.0

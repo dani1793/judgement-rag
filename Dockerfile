@@ -1,24 +1,32 @@
-FROM python:3.11-slim
+# syntax=docker/dockerfile:1
+FROM golang:1.21-alpine AS builder
 
-# Install system dependencies for OCR and PDF processing
-RUN apt-get update && apt-get install -y \
-    libgl1 \
-    libglib2.0-0 \
-    tesseract-ocr \
-    poppler-utils \
-    && rm -rf /var/lib/apt/lists/*
-
+# Set destination for COPY
 WORKDIR /app
 
-# Copy and install Python dependencies
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+# Download Go modules
+COPY go.mod go.sum ./
+RUN go mod download
 
-# Copy application files
-COPY . .
+# Copy the source code. Note the slash at the end, as explained in
+# https://docs.docker.com/engine/reference/builder/#copy
+COPY *.go ./
+COPY rag/ ./rag/
 
-# Expose port for FastAPI
+# Build
+RUN CGO_ENABLED=0 GOOS=linux go build -o /judgement-rag-go
+
+# Final stage
+FROM alpine:latest
+
+# Install dependencies (tesseract could be added here if OS exec was used)
+RUN apk add --no-cache ca-certificates
+
+WORKDIR /app
+COPY --from=builder /judgement-rag-go /app/judgement-rag-go
+
+# Expose port
 EXPOSE 8000
 
-# Start server
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# Run
+CMD ["/app/judgement-rag-go"]

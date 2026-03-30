@@ -1,15 +1,14 @@
-# Cost-Efficient RAG POC for Tax Judgements
+# Golang Cost-Efficient RAG POC for Tax Judgements
 
-This is a highly optimized, low-cost Retrieval-Augmented Generation (RAG) system built specifically to process and query complex legal/tax judgments.
+This is the **Golang** version of the ultra-low-cost Retrieval-Augmented Generation (RAG) system for querying tax judgements.
 
-It is designed to minimize cloud computing costs by moving the heavy vector processing to your local machine (or container) while leveraging generous free tiers for text generation.
+It swaps out the Python ecosystem for blazing-fast Go equivalents while maintaining a near-zero cost structure via embedded vector databases and Gemini's free tier.
 
-## 🏗️ Architecture Stack
-1. **API Layer**: `FastAPI`
-2. **Document Processing**: `LlamaIndex` (`SimpleDirectoryReader` with `pytesseract` / `poppler` for OCR)
-3. **Embeddings (Vectorization)**: `BAAI/bge-small-en-v1.5` (Runs 100% locally - **Cost: $0**)
-4. **Vector Database**: `LanceDB` (Embedded local disk storage - **Cost: $0**)
-5. **LLM**: `Google Gemini 1.5 Flash` (1M token context window, highly capable, **Generous Free Tier**)
+## 🏗️ Architecture Stack (Go Edition)
+1. **API Layer**: `github.com/gin-gonic/gin` (Fast and lightweight)
+2. **Document Processing**: `github.com/ledongthuc/pdf` for native Go PDF text extraction.
+3. **Embeddings & LLM**: `google/generative-ai-go/genai` using Gemini's generous free tier (`text-embedding-004` & `gemini-1.5-flash`).
+4. **Vector Database**: `github.com/philippgille/chromem-go` (Zero dependency, embedded in-memory vector DB with disk persistence).
 
 ## 🚀 Quickstart via Docker
 
@@ -22,17 +21,17 @@ GEMINI_API_KEY=your_gemini_api_key_here
 
 ### 2. Build the Docker Image
 ```bash
-docker build -t judgement-rag .
+docker build -t judgement-rag-go .
 ```
 
 ### 3. Run the Container
-We map the `lancedb` folder to your local machine so your database persists even if the container stops!
+We map the `chromem` folder to your local machine so your database persists even if the container stops!
 ```bash
 docker run -p 8000:8000 \
   --env-file .env \
-  -v $(pwd)/lancedb:/app/lancedb \
+  -v $(pwd)/chromem:/app/chromem \
   -v $(pwd)/data:/app/data \
-  judgement-rag
+  judgement-rag-go
 ```
 
 ## 🧪 Testing the API
@@ -52,6 +51,7 @@ curl -X POST \
   http://localhost:8000/query
 ```
 
-## 📈 Production Roadmap / Next Steps
-* **Advanced Document Parsing:** If your judgments have highly complex tables or poor-quality stamps, replace `SimpleDirectoryReader` with `Docling` or `Marker` to generate semantic Markdown chunks before embedding.
-* **Semantic Chunking:** For legal texts, configure LlamaIndex to chunk by headers/paragraphs rather than flat word counts to maintain context.
+## 📈 Learning Go Notes
+* **Why `chromem-go`?** It's a fantastic pure-Go drop-in replacement for complex vector stores like Milvus or Pinecone for POCs.
+* **Interfaces & Structs:** Check out `rag.go` to see how Go handles initialization without classical Object-Oriented constructors.
+* **Concurrency:** Notice the `ctx context.Context` passed around everywhere? That's Go's idiomatic way of handling cancellations and timeouts for API calls!

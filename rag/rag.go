@@ -72,7 +72,7 @@ func NewRAGSystem(ctx context.Context) (*RAGSystem, error) {
 	var embedModel *genai.EmbeddingModel
 
 	if client != nil {
-		genModel = client.GenerativeModel("gemini-2.0-flash")
+		genModel = client.GenerativeModel("gemini-pro-latest")
 		embedModel = client.EmbeddingModel("gemini-embedding-001")
 		embedModel.TaskType = genai.TaskTypeRetrievalDocument
 	}

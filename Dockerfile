@@ -20,7 +20,7 @@ RUN CGO_ENABLED=0 GOOS=linux go build -o /judgement-rag-go
 FROM alpine:latest
 
 # Install dependencies (tesseract could be added here if OS exec was used)
-RUN apk add --no-cache ca-certificates
+RUN apk add --no-cache ca-certificates tesseract-ocr poppler-utils
 
 WORKDIR /app
 COPY --from=builder /judgement-rag-go /app/judgement-rag-go

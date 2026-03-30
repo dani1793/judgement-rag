@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/google/generative-ai-go/genai"
 	"github.com/ledongthuc/pdf"
@@ -24,14 +25,42 @@ type RAGSystem struct {
 	Collection     *chromem.Collection
 }
 
+func (r *RAGSystem) backoffRetry(ctx context.Context, op func() error, maxRetries int) error {
+	var err error
+	for attempt := 0; attempt <= maxRetries; attempt++ {
+		if err = op(); err == nil {
+			return nil
+		}
+		
+		// If it's the last attempt, don't sleep, just return the error
+		if attempt == maxRetries {
+			break
+		}
+		
+		// Backoff: Base 2 seconds * (2 ^ attempt), capped at 60 seconds
+		waitSecs := 2 * (1 << uint(attempt))
+		if waitSecs > 60 {
+			waitSecs = 60
+		}
+		wait := time.Duration(waitSecs) * time.Second
+		
+		log.Printf("API error: %v. Retrying in %v (Attempt %d/%d)...", err, wait, attempt+1, maxRetries)
+		
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(wait):
+		}
+	}
+	return err
+}
+
 func NewRAGSystem(ctx context.Context) (*RAGSystem, error) {
 	apiKey := os.Getenv("GEMINI_API_KEY")
 	if apiKey == "" {
 		log.Println("WARNING: GEMINI_API_KEY environment variable is not set.")
 	}
 
-	// 1. Initialize Gemini Client for Generation & Embeddings
-	// For this Go version, we use Gemini's free embedding API instead of CGO/local models for simplicity & zero cost.
 	client, err := genai.NewClient(ctx, option.WithAPIKey(apiKey))
 	if err != nil {
 		if apiKey != "" {
@@ -48,14 +77,12 @@ func NewRAGSystem(ctx context.Context) (*RAGSystem, error) {
 		embedModel.TaskType = genai.TaskTypeRetrievalDocument
 	}
 
-	// 2. Initialize Chromem-go (Embedded Vector Database, similar to LanceDB)
 	dbPath := "./chromem"
 	db, err := chromem.NewPersistentDB(dbPath, false)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create chromem DB: %v", err)
 	}
 
-	// Create or get collection
 	collection, err := db.GetOrCreateCollection("tax_judgements", nil, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create collection: %v", err)
@@ -70,8 +97,6 @@ func NewRAGSystem(ctx context.Context) (*RAGSystem, error) {
 	}, nil
 }
 
-// ExtractTextFromPDF uses ledongthuc/pdf to extract raw text
-// For advanced OCR (PNG/JPG), you'd integrate an external exec call to tesseract.
 func ExtractTextFromPDF(path string) (string, error) {
 	f, r, err := pdf.Open(path)
 	if err != nil {
@@ -88,7 +113,6 @@ func ExtractTextFromPDF(path string) (string, error) {
 	return buf.String(), nil
 }
 
-// chunkText simply splits the text into ~1000 character chunks for embedding
 func chunkText(text string, chunkSize int) []string {
 	var chunks []string
 	runes := []rune(text)
@@ -116,21 +140,18 @@ func (r *RAGSystem) IndexDocument(ctx context.Context, filePath string) error {
 		text = string(b)
 		err = err2
 	} else {
-		return fmt.Errorf("unsupported file format %s. Only PDF and TXT supported in this POC.", ext)
+		return fmt.Errorf("unsupported file format %s. Only PDF and TXT supported.", ext)
 	}
 
 	if err != nil {
 		return fmt.Errorf("failed to extract text: %v", err)
 	}
-
 	if text == "" {
 		return errors.New("extracted text is empty")
 	}
 
-	// Create chunks
 	chunks := chunkText(text, 1000)
 
-	// Embed chunks using Gemini Embedding Model
 	if r.EmbedModel == nil {
 		return errors.New("embed model not initialized (check API key)")
 	}
@@ -141,19 +162,23 @@ func (r *RAGSystem) IndexDocument(ctx context.Context, filePath string) error {
 		batch.AddContent(genai.Text(chunk))
 	}
 
-	resp, err := r.EmbedModel.BatchEmbedContents(ctx, batch)
+	// === RETRY WRAPPER FOR EMBEDDING ===
+	var resp *genai.BatchEmbedContentsResponse
+	err = r.backoffRetry(ctx, func() error {
+		var e error
+		resp, e = r.EmbedModel.BatchEmbedContents(ctx, batch)
+		return e
+	}, 4)
 	if err != nil {
-		return fmt.Errorf("failed to embed chunks: %v", err)
+		return fmt.Errorf("failed to embed chunks after backoff retries: %v", err)
 	}
 
-	// Insert into Chroma
 	var documents []chromem.Document
 	for i, chunk := range chunks {
 		docID := fmt.Sprintf("%s_chunk_%d", filepath.Base(filePath), i)
 		metadata := map[string]string{"source": filePath}
 		emb := resp.Embeddings[i].Values
 
-		// Ensure float32 compatibility for chromem
 		var vec []float32
 		for _, v := range emb {
 			vec = append(vec, v)
@@ -167,7 +192,7 @@ func (r *RAGSystem) IndexDocument(ctx context.Context, filePath string) error {
 		})
 	}
 
-	err = r.Collection.AddDocuments(ctx, documents, 4) // concurrency 4
+	err = r.Collection.AddDocuments(ctx, documents, 4)
 	if err != nil {
 		return fmt.Errorf("failed to add documents to Chroma: %v", err)
 	}
@@ -181,10 +206,15 @@ func (r *RAGSystem) Query(ctx context.Context, query string) (string, error) {
 		return "", errors.New("system not fully initialized (missing API key or collection)")
 	}
 
-	// 1. Embed the query
-	resp, err := r.EmbedModel.EmbedContent(ctx, genai.Text(query))
+	// === RETRY WRAPPER FOR QUERY EMBEDDING ===
+	var resp *genai.EmbedContentResponse
+	err := r.backoffRetry(ctx, func() error {
+		var e error
+		resp, e = r.EmbedModel.EmbedContent(ctx, genai.Text(query))
+		return e
+	}, 4)
 	if err != nil || len(resp.Embedding.Values) == 0 {
-		return "", fmt.Errorf("failed to embed query: %v", err)
+		return "", fmt.Errorf("failed to embed query after retries: %v", err)
 	}
 
 	var vec []float32
@@ -192,15 +222,7 @@ func (r *RAGSystem) Query(ctx context.Context, query string) (string, error) {
 		vec = append(vec, v)
 	}
 
-	// 2. Retrieve top chunks from Chroma
-	resDocs, err := r.Collection.Query(ctx, query, 1, nil, nil)
-	if err != nil {
-		// chromem-go supports direct query by vector but its Query uses an internal embedding func if set.
-		// For our manual embeddings, we use QueryEmbedding.
-	}
-
-	// Using explicit vector query instead
-	resDocs, err = r.Collection.QueryEmbedding(ctx, vec, 1, nil, nil)
+	resDocs, err := r.Collection.QueryEmbedding(ctx, vec, 1, nil, nil)
 	if err != nil {
 		return "", fmt.Errorf("failed to query collection: %v", err)
 	}
@@ -209,7 +231,6 @@ func (r *RAGSystem) Query(ctx context.Context, query string) (string, error) {
 		return "No relevant context found in the database. Please upload a judgement first.", nil
 	}
 
-	// 3. Construct prompt
 	var contextBuilder strings.Builder
 	contextBuilder.WriteString("Context from Tax Judgements:\n")
 	for i, doc := range resDocs {
@@ -222,10 +243,15 @@ func (r *RAGSystem) Query(ctx context.Context, query string) (string, error) {
 
 Query: %s`, contextBuilder.String(), query)
 
-	// 4. Generate Answer
-	genResp, err := r.GenModel.GenerateContent(ctx, genai.Text(prompt))
+	// === RETRY WRAPPER FOR GENERATION ===
+	var genResp *genai.GenerateContentResponse
+	err = r.backoffRetry(ctx, func() error {
+		var e error
+		genResp, e = r.GenModel.GenerateContent(ctx, genai.Text(prompt))
+		return e
+	}, 4)
 	if err != nil {
-		return "", fmt.Errorf("failed to generate answer: %v", err)
+		return "", fmt.Errorf("failed to generate answer after retries: %v", err)
 	}
 
 	if len(genResp.Candidates) == 0 || len(genResp.Candidates[0].Content.Parts) == 0 {

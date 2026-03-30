@@ -10,6 +10,10 @@ It swaps out the Python ecosystem for blazing-fast Go equivalents while maintain
 3. **Embeddings & LLM**: `google/generative-ai-go/genai` using Gemini's generous free tier (`text-embedding-004` & `gemini-1.5-flash`).
 4. **Vector Database**: `github.com/philippgille/chromem-go` (Zero dependency, embedded in-memory vector DB with disk persistence).
 
+
+## 🗺️ Architecture Diagram
+A full sequence diagram illustrating the internal RAG flow (Upload ## 🚀 Quickstart via Docker Querying) can be found in [ARCHITECTURE.md](ARCHITECTURE.md).
+
 ## 🚀 Quickstart via Docker
 
 ### 1. Set Up Environment Variables

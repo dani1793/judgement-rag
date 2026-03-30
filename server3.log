@@ -1,0 +1,22 @@
+[GIN-debug] [WARNING] Creating an Engine instance with the Logger and Recovery middleware already attached.
+
+[GIN-debug] [WARNING] Running in "debug" mode. Switch to "release" mode in production.
+ - using env:	export GIN_MODE=release
+ - using code:	gin.SetMode(gin.ReleaseMode)
+
+[GIN-debug] GET    /health                   --> main.main.func1 (3 handlers)
+[GIN-debug] POST   /upload                   --> main.main.func2 (3 handlers)
+[GIN-debug] POST   /query                    --> main.main.func3 (3 handlers)
+2026/03/30 09:43:45 Starting server on :8000
+[GIN-debug] [WARNING] You trusted all proxies, this is NOT safe. We recommend you to set a value.
+Please check https://github.com/gin-gonic/gin/blob/master/docs/doc.md#dont-trust-all-proxies for details.
+[GIN-debug] Listening and serving HTTP on :8000
+2026/03/30 09:43:47 Indexing document: data/sample_judgement.txt
+2026/03/30 09:43:47 Embedding 1 chunks...
+2026/03/30 09:43:47 Document indexed successfully.
+[GIN] 2026/03/30 - 09:43:47 | 200 | 279.42ms |             ::1 | POST     "/upload"
+2026/03/30 09:43:47 API error: googleapi: Error 404: This model models/gemini-2.0-flash is no longer available to new users. Please update your code to use a newer model for the latest features and improvements.. Retrying in 2s (Attempt 1/4)...
+2026/03/30 09:43:50 API error: googleapi: Error 404: This model models/gemini-2.0-flash is no longer available to new users. Please update your code to use a newer model for the latest features and improvements.. Retrying in 4s (Attempt 2/4)...
+2026/03/30 09:43:54 API error: googleapi: Error 404: This model models/gemini-2.0-flash is no longer available to new users. Please update your code to use a newer model for the latest features and improvements.. Retrying in 8s (Attempt 3/4)...
+2026/03/30 09:44:02 API error: googleapi: Error 404: This model models/gemini-2.0-flash is no longer available to new users. Please update your code to use a newer model for the latest features and improvements.. Retrying in 16s (Attempt 4/4)...
+[GIN] 2026/03/30 - 09:44:18 | 500 |   30.98s |             ::1 | POST     "/query"

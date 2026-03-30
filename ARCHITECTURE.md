@@ -5,21 +5,38 @@ This diagram illustrates the two primary flows in the Retrieval-Augmented Genera
 GitHub natively renders `mermaid.js` diagrams.
 
 ## 1. Document Indexing Flow (`/upload`)
-The flow of taking a raw PDF/TXT and converting it into searchable vector embeddings.
+The flow of taking a raw PDF, Image, or TXT file, running Smart OCR fallbacks if necessary, and converting it into searchable vector embeddings.
 
 ```mermaid
 sequenceDiagram
     autonumber
     actor Client
     participant API as Gin HTTP Server
-    participant Extractor as Document Parser (ledongthuc/pdf)
+    participant Extractor as Native PDF Parser
+    participant PDFToPPM as Poppler (pdftoppm)
+    participant OCR as Tesseract OCR
     participant GeminiEmbed as Gemini API (Embedding)
     participant DB as Vector DB (chromem-go)
 
-    Client->>API: POST /upload (Upload PDF/TXT)
+    Client->>API: POST /upload (Upload PDF/PNG/JPG/TXT)
     API->>API: Save file to /data
-    API->>Extractor: Extract text
-    Extractor-->>API: Return raw text string
+    
+    alt is PNG/JPG
+        API->>OCR: Run Tesseract OCR directly
+        OCR-->>API: Return Extracted Text
+    else is PDF
+        API->>Extractor: Attempt Native Text Extraction
+        Extractor-->>API: Return Extracted Text
+        alt Text is empty or too short (Scanned PDF)
+            API->>PDFToPPM: Convert PDF pages to temporary Images
+            PDFToPPM-->>API: Return Image files
+            API->>OCR: Run Tesseract OCR on each Image
+            OCR-->>API: Return Extracted Text
+        end
+    else is TXT
+        API->>API: Read raw text file
+    end
+
     API->>API: Chunk text (e.g. 1000 chars)
     API->>GeminiEmbed: Request embeddings for N chunks (with Backoff)
     GeminiEmbed-->>API: Return float32 vectors []

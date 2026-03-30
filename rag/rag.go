@@ -43,8 +43,9 @@ func NewRAGSystem(ctx context.Context) (*RAGSystem, error) {
 	var embedModel *genai.EmbeddingModel
 
 	if client != nil {
-		genModel = client.GenerativeModel("gemini-1.5-flash")
-		embedModel = client.EmbeddingModel("text-embedding-004")
+		genModel = client.GenerativeModel("gemini-2.0-flash")
+		embedModel = client.EmbeddingModel("gemini-embedding-001")
+		embedModel.TaskType = genai.TaskTypeRetrievalDocument
 	}
 
 	// 2. Initialize Chromem-go (Embedded Vector Database, similar to LanceDB)
@@ -192,14 +193,14 @@ func (r *RAGSystem) Query(ctx context.Context, query string) (string, error) {
 	}
 
 	// 2. Retrieve top chunks from Chroma
-	resDocs, err := r.Collection.Query(ctx, query, 5, nil, nil)
+	resDocs, err := r.Collection.Query(ctx, query, 1, nil, nil)
 	if err != nil {
 		// chromem-go supports direct query by vector but its Query uses an internal embedding func if set.
 		// For our manual embeddings, we use QueryEmbedding.
 	}
 
 	// Using explicit vector query instead
-	resDocs, err = r.Collection.QueryEmbedding(ctx, vec, 5, nil, nil)
+	resDocs, err = r.Collection.QueryEmbedding(ctx, vec, 1, nil, nil)
 	if err != nil {
 		return "", fmt.Errorf("failed to query collection: %v", err)
 	}
